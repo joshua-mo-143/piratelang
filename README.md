@@ -7,18 +7,18 @@ Currently, you can't use anything yet! This programming language is still basica
 If you want to try some stuff out, you can clone the repo and use `cargo test` to try some of the tests.
 
 ## Roadmap
-[x] - Add basic type primitives
-[x] - Declare variables
-[x] - If statements
-[ ] - Mathematical operators
-[x] - Functions
-[ ] - File imports
-[ ] - Think about possible data structures (structs, enums) and implement them
-[ ] - Think about interfaces and implement them
-[ ] - Design a standard library
-[ ] - Write a standard library
-[ ] - Add some HTTP primitives to the library
-[ ] - Write a web server using Piratelang
+- [x] Add basic type primitives
+- [x] Declare variables
+- [x] If statements
+- [ ] Mathematical operators
+- [x] Functions
+- [ ] File imports
+- [ ] Think about possible data structures (structs, enums) and implement them
+- [ ] Think about interfaces and implement them
+- [ ] Design a standard library
+- [ ] Write a standard library
+- [ ] Add some HTTP primitives to the library
+- [ ] Write a web server using Piratelang
 
 ## Syntax
 Currently, the only syntax we really have is this:
