@@ -10,7 +10,7 @@ If you want to try some stuff out, you can clone the repo and use `cargo test` t
 - [x] Add basic type primitives
 - [x] Declare variables
 - [x] If statements
-- [ ] Mathematical operators
+- [x] Mathematical operators
 - [x] Functions
 - [ ] File imports
 - [ ] Think about possible data structures (structs, enums) and implement them
