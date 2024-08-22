@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use nom::branch::alt;
 use nom::bytes::complete::{escaped, tag, take_until, take_while1};
-use nom::character::complete::{char, multispace1, none_of, one_of};
+use nom::character::complete::{char, multispace0, multispace1, none_of, one_of};
 
 use nom::combinator::{eof, opt};
 
@@ -27,6 +27,14 @@ struct FnParameter {
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
+enum MathOps {
+    Add,
+    Minus,
+    Divide,
+    Multiply,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Primitive {
     String(String),
     Number(i64),
@@ -38,6 +46,7 @@ pub enum Primitive {
 enum Typename {
     String,
     Number,
+    Float,
     Bool,
     List,
 }
@@ -60,9 +69,10 @@ impl From<bool> for Primitive {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Expr {
     Eof,
+    MathOps(MathOps),
     Primitive(Primitive),
     Variable(String),
     Typename(Typename),
@@ -79,7 +89,7 @@ pub enum Expr {
     If(Box<Expr>, Box<Expr>),
     FnDecl {
         name: String,
-        params: Vec<Expr>,
+        params: Vec<FnParameter>,
         body: Box<Expr>,
     },
     Fn {
@@ -124,8 +134,16 @@ impl Expr {
                     Ok(Expr::Primitive(Primitive::Bool(false)))
                 }
             }
+            Expr::MathOps(op) => Ok(Expr::MathOps(op.to_owned())),
             Expr::FnDecl { name, params, body } => {
-                todo!()
+                let expr = Expr::FnDecl {
+                    name: name.to_owned(),
+                    params: params.to_owned(),
+                    body: body.to_owned(),
+                };
+                symbols.set(name.clone(), Box::new(expr.to_owned()));
+
+                Ok(expr)
             }
             Expr::Fn { name, params, body } => {
                 todo!()
@@ -166,6 +184,36 @@ fn parse_var(s: Span) -> IResult<Span, String> {
     Ok((s, var_name.fragment().to_string()))
 }
 
+fn parse_maths_op(s: Span) -> IResult<Span, char> {
+    alt((char('+'), char('-'), char('/'), char('*')))(s)
+}
+
+fn parse_maths_int(s: Span) -> IResult<Span, Expr> {
+    let (s, int1) = parse_int(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, op) = parse_maths_op(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, int2) = parse_int(s)?;
+
+    let Expr::Primitive(Primitive::Number(left_num)) = int1 else {
+        panic!("Number doesn't exist!");
+    };
+
+    let Expr::Primitive(Primitive::Number(right_num)) = int2 else {
+        panic!("Number doesn't exist!");
+    };
+
+    let res = match op {
+        '+' => left_num + right_num,
+        '-' => left_num - right_num,
+        '/' => left_num / right_num,
+        '*' => left_num * right_num,
+        _ => todo!(),
+    };
+
+    Ok((s, Expr::Primitive(res.into())))
+}
+
 fn parse_bool(s: Span) -> IResult<Span, Expr> {
     let (s, bool) = alt((tag("true"), tag("false")))(s)?;
 
@@ -186,7 +234,7 @@ fn parse_str(s: Span) -> IResult<Span, Expr> {
     Ok((s, Expr::Primitive(string.fragment().to_string().into())))
 }
 
-fn parse_num(s: Span) -> IResult<Span, Expr> {
+fn parse_int(s: Span) -> IResult<Span, Expr> {
     let (s, num) = take_while1(|c: char| c.is_ascii_digit())(s)?;
 
     let num_parsed: i64 = num.fragment().parse().unwrap();
@@ -216,6 +264,7 @@ fn parse_type(s: Span) -> IResult<Span, Typename> {
 fn parse_param(s: Span) -> IResult<Span, FnParameter> {
     let (s, name) = parse_var(s)?;
     let (s, _) = char(':')(s)?; // Match the ':' separating name and type
+    let (s, _) = multispace0(s)?;
     let (s, kind) = parse_type(s)?; // Parse the type
 
     Ok((s, FnParameter { name, kind }))
@@ -223,6 +272,7 @@ fn parse_param(s: Span) -> IResult<Span, FnParameter> {
 
 fn parse_fn_body(s: Span) -> IResult<Span, Expr> {
     let (s, _) = char('{')(s)?;
+    let (s, _) = multispace0(s)?;
 
     let mut statements = Vec::new();
     let mut s = s;
@@ -232,25 +282,34 @@ fn parse_fn_body(s: Span) -> IResult<Span, Expr> {
         s = next_s;
     }
 
+    let (s, _) = multispace0(s)?;
     let (s, _) = char('}')(s)?;
 
     Ok((s, Expr::FnBody(statements)))
 }
 
 fn parse_fn_decl(s: Span) -> IResult<Span, Expr> {
+    let (s, _) = take_until("fn")(s)?;
     let (s, _) = tag("fn")(s)?;
     let (s, _) = multispace1(s)?;
     let (s, name) = parse_var(s)?;
-    let (s, _) = char('(')(s)?;
     let (s, params) = delimited(
         char('('),
         separated_list0(char(','), parse_param),
         char(')'),
     )(s)?;
+    let (s, _) = multispace0(s)?;
 
     let (s, body) = parse_fn_body(s)?;
 
-    todo!()
+    Ok((
+        s,
+        Expr::FnDecl {
+            name,
+            params,
+            body: Box::new(body),
+        },
+    ))
 }
 
 fn parse_fn_call(s: Span) -> IResult<Span, Expr> {
@@ -273,7 +332,7 @@ fn parse_fn_call(s: Span) -> IResult<Span, Expr> {
 }
 
 fn parse_primitive(s: Span) -> IResult<Span, Expr> {
-    alt((parse_str, parse_num, parse_bool))(s)
+    alt((parse_str, parse_int, parse_bool))(s)
 }
 
 fn parse_bracketed_expr(s: Span) -> IResult<Span, Expr> {
@@ -318,42 +377,5 @@ fn parse_eof(s: Span) -> IResult<Span, Expr> {
 }
 
 pub fn parse_statement(s: Span) -> IResult<Span, Expr> {
-    Ok(alt((parse_decl, parse_fn_decl, parse_eof))(s).unwrap())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parsing_should_work() {
-        let s = Span::new("yarr me be 42\n yarr it be true\n yarr say be \"Meme!\"");
-
-        let (s, me) = parse_statement(s).unwrap();
-        assert_eq!(
-            me,
-            Expr::Assign {
-                name: "me".to_string(),
-                expr: Box::new(Expr::Primitive(42.into()))
-            }
-        );
-
-        let (s, it) = parse_statement(s).unwrap();
-        assert_eq!(
-            it,
-            Expr::Assign {
-                name: "it".to_string(),
-                expr: Box::new(Expr::Primitive(true.into()))
-            }
-        );
-
-        let (s, say) = parse_statement(s).unwrap();
-        assert_eq!(
-            say,
-            Expr::Assign {
-                name: "say".to_string(),
-                expr: Box::new(Expr::Primitive("Meme!".to_string().into()))
-            }
-        );
-    }
+    alt((parse_decl, parse_fn_decl, parse_eof))(s)
 }

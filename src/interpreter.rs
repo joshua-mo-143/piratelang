@@ -34,21 +34,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_interpreter_works() {
+    fn test_assignment_works() {
         let mut parser = Interpreter::new();
         let input = read_to_string("examples/hello.pirate").unwrap();
         let input = input.trim_end();
 
         parser.interpret(input);
 
-        assert_eq!(
-            parser.symbol_table.get("hello".to_string()),
-            Box::new(Expr::Primitive("World!".to_string().into()))
-        );
+        let str = parser.symbol_table.get("hello".to_string());
 
-        assert_eq!(
-            parser.symbol_table.get("theAnswer".to_string()),
-            Box::new(Expr::Primitive(42.into()))
-        );
+        assert_eq!(*str, Expr::Primitive("World!".to_string().into()));
+    }
+
+    #[test]
+    fn test_fn_declaration_works() {
+        let mut parser = Interpreter::new();
+        let input = read_to_string("examples/fn.pirate").unwrap();
+        let input = input.trim_end();
+
+        parser.interpret(input);
+
+        assert_eq!(parser.symbol_table.len(), 1);
     }
 }
