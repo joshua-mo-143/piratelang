@@ -1,2 +1,6 @@
 yarr hello be "World!"
 yarr theAnswer be 42
+
+fn yarr() {
+    yarr my be "function"
+}

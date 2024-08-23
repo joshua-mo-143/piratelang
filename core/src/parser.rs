@@ -1,3 +1,6 @@
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
 use std::str::FromStr;
 
 use nom::branch::alt;
@@ -40,6 +43,25 @@ pub enum Primitive {
     Number(i64),
     Bool(bool),
     List(Vec<Primitive>),
+}
+
+impl Display for Primitive {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            Self::String(string) => write!(f, "{string}"),
+            Self::Number(num) => write!(f, "{num}"),
+            Self::Bool(bool) => write!(f, "{bool}"),
+            Self::List(list) => {
+                let list_as_str = list
+                    .to_owned()
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "[{list_as_str}]")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -184,6 +206,11 @@ fn parse_var(s: Span) -> IResult<Span, String> {
     Ok((s, var_name.fragment().to_string()))
 }
 
+fn parse_var_expr(s: Span) -> IResult<Span, Expr> {
+    let (s, var) = parse_var(s)?;
+    Ok((s, Expr::Variable(var)))
+}
+
 fn parse_maths_op(s: Span) -> IResult<Span, char> {
     alt((char('+'), char('-'), char('/'), char('*')))(s)
 }
@@ -242,7 +269,7 @@ fn parse_int(s: Span) -> IResult<Span, Expr> {
 }
 
 fn parse_expr(s: Span) -> IResult<Span, Expr> {
-    alt((parse_if, parse_primitive))(s)
+    alt((parse_if, parse_maths_int, parse_primitive, parse_var_expr))(s)
 }
 
 fn parse_type(s: Span) -> IResult<Span, Typename> {
@@ -350,7 +377,6 @@ fn parse_bracketed_expr(s: Span) -> IResult<Span, Expr> {
 fn parse_decl(s: Span) -> IResult<Span, Expr> {
     let (s, _) = take_until("yarr")(s)?;
     let (s, _) = tag("yarr")(s)?;
-    let (s, pos) = position(s)?;
     let (s, _) = multispace1(s)?;
     let (s, (name, expr)) = pair(
         terminated(parse_var, preceded(opt(char(' ')), tag("be"))),
@@ -377,5 +403,5 @@ fn parse_eof(s: Span) -> IResult<Span, Expr> {
 }
 
 pub fn parse_statement(s: Span) -> IResult<Span, Expr> {
-    alt((parse_decl, parse_fn_decl, parse_eof))(s)
+    alt((parse_decl, parse_fn_decl, parse_expr, parse_eof))(s)
 }
