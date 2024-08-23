@@ -1,6 +1,9 @@
+plunder logging
+
 yarr hello be "World!"
 yarr theAnswer be 42
 
-fn yarr() {
+plan yarr() {
     yarr my be "function"
+    print(4)
 }

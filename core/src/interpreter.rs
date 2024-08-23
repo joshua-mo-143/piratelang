@@ -15,7 +15,6 @@ impl Interpreter {
     pub fn interpret(&mut self, s: &str) {
         let mut input = Span::new(s);
 
-        let output: Option<Expr> = None;
         while !input.is_empty() || input.fragment() != &"\n" {
             let (remaining_input, expr) = parse_statement(input).unwrap();
             let val = expr.evaluate(&mut self.symbol_table).unwrap();
@@ -57,7 +56,7 @@ mod tests {
 
         parser.interpret(input);
 
-        let str = parser.symbol_table.get("hello".to_string());
+        let str = parser.symbol_table.get_var("hello".to_string());
 
         assert_eq!(*str, Expr::Primitive("World!".to_string().into()));
     }
