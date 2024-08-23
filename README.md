@@ -1,10 +1,10 @@
 ## Piratelang - A language for those who sail the seven seas!
 Piratelang is a dynamically-typed interpreted scripting language based on pirates.
 
-## Usage
-Currently, you can't use anything yet! This programming language is still basically in its baby steps and as such, there is nothing to really see here.
+This is *primarily* a hobby project, but with the eventual aim of being usable for more than hobbyist workloads.
 
-If you want to try some stuff out, you can clone the repo and use `cargo test` to try some of the tests.
+## Usage
+To try out Piratelang, you can run the REPL in this repo (`cargo run -p repl` from the root folder). You can also look at the examples folder (within `_examples`) if you want to have a cursory look at what code currently looks like, as they are used for tests.
 
 ## Roadmap
 - [x] Add basic type primitives
@@ -12,30 +12,9 @@ If you want to try some stuff out, you can clone the repo and use `cargo test` t
 - [x] If statements
 - [x] Mathematical operators
 - [x] Functions
+- [ ] Add common data structures (lists, hashmaps/dicts)
 - [ ] File imports
-- [ ] Think about possible data structures (structs, enums) and implement them
-- [ ] Think about interfaces and implement them
 - [ ] Design a standard library
 - [ ] Write a standard library
-- [ ] Add some HTTP primitives to the library
 - [ ] Write a web server using Piratelang
-
-## Syntax
-Currently, the only syntax we really have is this:
-```
-yarr <variable_name> be <expr>
-
-if <expression that equals true here> {
-    {some expression here}
-}
-```
-
-You can view the examples folder to find out what kinds of operations are supported.
-
-Currently, the following primitive types are supported:
-- Strings (use double quotes)
-- Booleans (`true` or `false`)
-- Numbers (up to 64-bit signed integers)
-
-## But why?
-Why not?
+- [ ] (Github-based) Package management
