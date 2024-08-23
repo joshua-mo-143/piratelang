@@ -16,6 +16,7 @@ use nom_locate::{position, LocatedSpan};
 
 pub type Span<'a> = LocatedSpan<&'a str>;
 
+use crate::stdlib::logging::Logging;
 use crate::symbols::SymbolTable;
 
 #[derive(Debug)]
@@ -24,7 +25,7 @@ enum Ident {
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
-struct FnParameter {
+pub struct FnParameter {
     kind: Typename,
     name: String,
 }
@@ -39,15 +40,17 @@ enum MathOps {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Primitive {
+    None,
     String(String),
     Number(i64),
     Bool(bool),
-    List(Vec<Primitive>),
+    List(Vec<Expr>),
 }
 
 impl Display for Primitive {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
+            Self::None => write!(f, "None"),
             Self::String(string) => write!(f, "{string}"),
             Self::Number(num) => write!(f, "{num}"),
             Self::Bool(bool) => write!(f, "{bool}"),
@@ -94,11 +97,14 @@ impl From<bool> for Primitive {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Expr {
     Eof,
+    Empty,
+    Import(String),
     MathOps(MathOps),
     Primitive(Primitive),
     Variable(String),
     Typename(Typename),
     FnParameter(FnParameter),
+    RustFn(Box<fn(Vec<Expr>) -> Box<Expr>>),
     FnBody(Vec<Expr>),
     FnCall {
         name: String,
@@ -114,11 +120,18 @@ pub enum Expr {
         params: Vec<FnParameter>,
         body: Box<Expr>,
     },
-    Fn {
-        name: String,
-        params: Vec<FnParameter>,
-        body: Box<Expr>,
-    },
+}
+
+impl Display for Expr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Eof => write!(f, "eof"),
+            Self::Primitive(p) => write!(f, "{p}"),
+            _ => {
+                panic!("You can't print that!")
+            }
+        }
+    }
 }
 
 impl From<Typename> for Expr {
@@ -136,16 +149,27 @@ impl From<Primitive> for Expr {
 impl Expr {
     pub fn evaluate(&self, symbols: &mut SymbolTable) -> Result<Expr, String> {
         match self {
-            Expr::FnCall { name, params } => todo!(),
+            Expr::FnCall { name, params } => {
+                Ok(*(symbols.call_fn(name.to_owned(), params.to_owned())))
+            }
             Expr::Eof => Ok(Expr::Eof),
+            Expr::Empty => Ok(Expr::Empty),
+            Expr::Import(name) => match name.trim() {
+                "logging" => {
+                    symbols.load_module(Logging);
+                    Ok(Expr::Empty)
+                }
+                _ => todo!(),
+            },
+            Expr::RustFn(fun) => Ok(Expr::RustFn(fun.to_owned())),
             Expr::Primitive(primitive) => Ok(primitive.to_owned().into()),
             Expr::Typename(kind) => Ok(kind.to_owned().into()),
-            Expr::Variable(name) => Ok(*symbols.get(name.to_string())),
+            Expr::Variable(name) => Ok(*symbols.get_var(name.to_string())),
             Expr::FnBody(body) => Ok(Expr::FnBody(body.to_owned())),
             Expr::FnParameter(param) => Ok(Expr::FnParameter(param.to_owned())),
             Expr::Assign { name, expr } => {
                 let value = expr.evaluate(symbols)?;
-                symbols.set(name.clone(), Box::new(value.clone()));
+                symbols.set_var(name.clone(), Box::new(value.clone()));
                 Ok(value)
             }
             Expr::If(pred, true_branch) => {
@@ -163,12 +187,9 @@ impl Expr {
                     params: params.to_owned(),
                     body: body.to_owned(),
                 };
-                symbols.set(name.clone(), Box::new(expr.to_owned()));
+                symbols.register_fn(name.clone(), Box::new(expr.to_owned()));
 
                 Ok(expr)
-            }
-            Expr::Fn { name, params, body } => {
-                todo!()
             }
         }
     }
@@ -202,6 +223,7 @@ fn parse_if(s: Span) -> IResult<Span, Expr> {
 }
 
 fn parse_var(s: Span) -> IResult<Span, String> {
+    let (s, _) = multispace0(s)?;
     let (s, var_name) = take_while1(|c: char| c.is_alphanumeric())(s)?;
     Ok((s, var_name.fragment().to_string()))
 }
@@ -241,6 +263,13 @@ fn parse_maths_int(s: Span) -> IResult<Span, Expr> {
     Ok((s, Expr::Primitive(res.into())))
 }
 
+fn parse_list(s: Span) -> IResult<Span, Expr> {
+    let mut parser = delimited(char('['), separated_list0(char(','), parse_expr), char(']'));
+
+    let (s, list_items) = parser(s)?;
+    Ok((s, Expr::Primitive(Primitive::List(list_items))))
+}
+
 fn parse_bool(s: Span) -> IResult<Span, Expr> {
     let (s, bool) = alt((tag("true"), tag("false")))(s)?;
 
@@ -268,8 +297,24 @@ fn parse_int(s: Span) -> IResult<Span, Expr> {
     Ok((s, Expr::Primitive(num_parsed.into())))
 }
 
+fn parse_import(s: Span) -> IResult<Span, Expr> {
+    let (s, _) = take_until("plunder")(s)?;
+    let (s, _) = tag("plunder")(s)?;
+    let (s, _) = multispace0(s)?;
+
+    let (s, import_name) = parse_var(s)?;
+
+    Ok((s, Expr::Import(import_name)))
+}
+
 fn parse_expr(s: Span) -> IResult<Span, Expr> {
-    alt((parse_if, parse_maths_int, parse_primitive, parse_var_expr))(s)
+    alt((
+        parse_fn_call,
+        parse_if,
+        parse_maths_int,
+        parse_primitive,
+        parse_var_expr,
+    ))(s)
 }
 
 fn parse_type(s: Span) -> IResult<Span, Typename> {
@@ -316,8 +361,8 @@ fn parse_fn_body(s: Span) -> IResult<Span, Expr> {
 }
 
 fn parse_fn_decl(s: Span) -> IResult<Span, Expr> {
-    let (s, _) = take_until("fn")(s)?;
-    let (s, _) = tag("fn")(s)?;
+    let (s, _) = take_until("plan")(s)?;
+    let (s, _) = tag("plan")(s)?;
     let (s, _) = multispace1(s)?;
     let (s, name) = parse_var(s)?;
     let (s, params) = delimited(
@@ -344,7 +389,7 @@ fn parse_fn_call(s: Span) -> IResult<Span, Expr> {
     let mut parser = delimited(
         char('('),
         separated_list0(char(','), parse_primitive),
-        char('('),
+        char(')'),
     );
 
     let (s, params) = parser(s)?;
@@ -403,5 +448,11 @@ fn parse_eof(s: Span) -> IResult<Span, Expr> {
 }
 
 pub fn parse_statement(s: Span) -> IResult<Span, Expr> {
-    alt((parse_decl, parse_fn_decl, parse_expr, parse_eof))(s)
+    alt((
+        parse_fn_call,
+        parse_decl,
+        parse_fn_decl,
+        parse_expr,
+        parse_eof,
+    ))(s)
 }
