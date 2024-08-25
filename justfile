@@ -11,3 +11,6 @@ ci:
     cargo fmt
     cargo clippy
     cargo test
+
+repl:
+    cargo run -p piratelang-repl

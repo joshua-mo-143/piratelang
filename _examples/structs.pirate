@@ -1,0 +1,3 @@
+struct Mystruct { id->number, name->string }
+
+yarr my_struct be Mystruct { 2, "Josh" }

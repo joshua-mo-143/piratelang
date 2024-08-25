@@ -1,3 +1,4 @@
+use crate::check_args_num;
 use crate::{
     parser::{Expr, Primitive},
     symbols::{self, Module, SymbolTable},
@@ -5,25 +6,15 @@ use crate::{
 
 pub struct Logging;
 
+#[piratelang_macros::load_module]
 impl Logging {
     fn print(s: Vec<Expr>) -> Box<Expr> {
-        if s.len() != 1 {
-            println!("Expected 1 argument, got {}", s.len());
-        }
+        check_args_num!(1, s.len());
 
         if let Expr::Primitive(prim) = s.first().unwrap() {
             println!("{prim}");
         };
 
         Box::new(Expr::Primitive(Primitive::None))
-    }
-}
-
-impl Module for Logging {
-    fn load(self, symbols: &mut SymbolTable) {
-        symbols.register_fn(
-            "print".into(),
-            Box::new(Expr::RustFn(Box::new(Self::print))),
-        )
     }
 }

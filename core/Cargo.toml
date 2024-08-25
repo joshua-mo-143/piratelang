@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 nom = "7.1.3"
 nom_locate = "4.2.0"
+piratelang-macros = { path = "../macros" }

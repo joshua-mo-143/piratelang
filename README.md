@@ -12,9 +12,15 @@ To try out Piratelang, you can run the REPL in this repo (`cargo run -p repl` fr
 - [x] If statements
 - [x] Mathematical operators
 - [x] Functions
-- [ ] Add common data structures (lists, hashmaps/dicts)
+- [x] Add lists
+- [x] Add structs
 - [ ] File imports
+- [x] Ability to use Rust functions under the hood for stdlib
+- [x] Chained methods
 - [ ] Design a standard library
 - [ ] Write a standard library
 - [ ] Write a web server using Piratelang
 - [ ] (Github-based) Package management
+
+## Language Quirks
+- It's currently recommended to put all of your functions at the top and then execution should either be in a different file or at the bottom of the file.

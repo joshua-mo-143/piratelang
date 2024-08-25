@@ -1,15 +1,25 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use crate::chained_methods::string::StringMethods;
+use crate::errors::CustomError;
 use crate::parser::{parse_statement, Expr, Span};
+use crate::stdlib::logging::Logging;
 use crate::symbols::SymbolTable;
 
 pub struct Interpreter {
-    symbol_table: SymbolTable,
+    symbol_table: Rc<RefCell<SymbolTable>>,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self {
-            symbol_table: SymbolTable::new(),
-        }
+        let symbol_table = Rc::new(RefCell::new(SymbolTable::new()));
+        Self { symbol_table }
+    }
+
+    pub fn load_modules(&mut self) {
+        self.symbol_table.borrow_mut().load_module(StringMethods);
+        self.symbol_table.borrow_mut().load_module(Logging);
     }
 
     pub fn interpret(&mut self, s: &str) {
@@ -17,7 +27,7 @@ impl Interpreter {
 
         while !input.is_empty() || input.fragment() != &"\n" {
             let (remaining_input, expr) = parse_statement(input).unwrap();
-            let val = expr.evaluate(&mut self.symbol_table).unwrap();
+            let val = expr.evaluate(self.symbol_table.clone()).unwrap();
 
             if val == Expr::Eof {
                 break;
@@ -26,12 +36,14 @@ impl Interpreter {
         }
     }
 
-    pub fn interpret_print(&mut self, s: &str) {
+    pub fn interpret_print(&self, s: &str) {
         let mut input = Span::new(s);
 
         while !input.is_empty() || input.fragment() != &"\n" {
             let (remaining_input, expr) = parse_statement(input).unwrap();
-            let val = expr.evaluate(&mut self.symbol_table).unwrap();
+            println!("Statement found: {expr:?}");
+            let table = Rc::clone(&self.symbol_table);
+            let val = expr.evaluate(table).unwrap();
             print!("{val:?}");
 
             if val == Expr::Eof {
@@ -51,13 +63,45 @@ mod tests {
     #[test]
     fn test_assignment_works() {
         let mut parser = Interpreter::new();
-        let input = read_to_string("../_examples/hello.pirate").unwrap();
+        parser.load_modules();
+        let input = read_to_string("../_examples/assignment.pirate").unwrap();
+        let input = input.trim_end();
+
+        parser.interpret(input);
+        assert_eq!(parser.symbol_table.borrow().len(), 2);
+    }
+
+    #[test]
+    fn test_using_variables_works() {
+        let mut parser = Interpreter::new();
+        let input = read_to_string("../_examples/imports.pirate").unwrap();
         let input = input.trim_end();
 
         parser.interpret(input);
 
-        let str = parser.symbol_table.get_var("hello".to_string());
+        assert_eq!(parser.symbol_table.borrow().len(), 1);
+    }
 
-        assert_eq!(*str, Expr::Primitive("World!".to_string().into()));
+    #[test]
+    fn test_using_functions_works() {
+        let mut parser = Interpreter::new();
+        let input = read_to_string("../_examples/functions.pirate").unwrap();
+        let input = input.trim_end();
+
+        parser.interpret(input);
+
+        assert_eq!(parser.symbol_table.borrow().len(), 1);
+    }
+
+    #[test]
+    fn test_using_structs_works() {
+        let mut parser = Interpreter::new();
+        parser.load_modules();
+        let input = read_to_string("../_examples/structs.pirate").unwrap();
+        let input = input.trim_end();
+
+        parser.interpret(input);
+
+        assert_eq!(parser.symbol_table.borrow().len(), 1);
     }
 }

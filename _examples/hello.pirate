@@ -1,9 +1,0 @@
-plunder logging
-
-yarr hello be "World!"
-yarr theAnswer be 42
-
-plan yarr() {
-    yarr my be "function"
-    print(4)
-}
