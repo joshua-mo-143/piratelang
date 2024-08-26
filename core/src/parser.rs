@@ -271,8 +271,7 @@ pub enum Expr {
     },
     ChainedFnCall {
         caller: Box<Expr>,
-        method_name: String,
-        fn_args: Vec<Expr>,
+        fn_calls: Vec<Expr>,
     },
     FnCall {
         name: String,
@@ -430,48 +429,61 @@ impl Expr {
                 .to_owned()),
             Expr::FnBody(body) => Ok(Expr::FnBody(body.to_owned())),
             Expr::FnParameter(param) => Ok(Expr::FnParameter(param.to_owned())),
-            Expr::ChainedFnCall {
-                caller,
-                method_name,
-                mut fn_args,
-            } => {
-                fn_args.insert(0, *caller.clone());
+            Expr::ChainedFnCall { caller, fn_calls } => {
+                let mut caller = *caller;
 
-                let fn_args: Vec<Expr> = fn_args
-                    .into_iter()
-                    .map(|x| match x {
-                        Expr::Variable(var_name) => symbols
-                            .borrow()
-                            .get_var(var_name.to_owned())
-                            .unwrap()
-                            .to_owned(),
-                        Expr::IfCond {
-                            expr1,
-                            expr2,
-                            eq_op,
-                        } => eq_op.compare(*expr1, *expr2),
-                        _ => x.to_owned(),
-                    })
-                    .collect();
+                for (i, fn_call) in fn_calls.iter().enumerate() {
+                    let Expr::FnCall { name, mut params } = fn_call.clone() else {
+                        return Err("Chained expression is not a function call.".into());
+                    };
 
-                let caller = *caller;
+                    params.insert(0, caller.clone());
 
-                let method_name = if let Expr::Primitive(ref prim) = caller {
-                    format!("{}{method_name}", prim.to_module_name())
-                } else {
-                    let val = caller.clone().evaluate(symbols.clone()).unwrap();
-                    match val {
-                        Expr::Primitive(prim) => format!("{}{method_name}", prim.to_module_name()),
-                        Expr::ModuleName(name) => format!("{name}-module-{method_name}"),
-                        _ => {
-                            panic!("Caller does not evaluate to an accepted value.")
+                    let fn_args: Vec<Expr> = params
+                        .into_iter()
+                        .map(|x| match x {
+                            Expr::Variable(var_name) => symbols
+                                .borrow()
+                                .get_var(var_name.to_owned())
+                                .unwrap()
+                                .to_owned(),
+                            Expr::IfCond {
+                                expr1,
+                                expr2,
+                                eq_op,
+                            } => eq_op.compare(*expr1, *expr2),
+                            _ => x.to_owned(),
+                        })
+                        .collect();
+
+                    let method_name = if let Expr::Primitive(ref prim) = caller {
+                        format!("{}{name}", prim.to_module_name())
+                    } else {
+                        let val = caller.clone().evaluate(symbols.clone()).unwrap();
+                        match val {
+                            Expr::Primitive(prim) => {
+                                format!("{}{name}", prim.to_module_name())
+                            }
+                            _ => {
+                                panic!("Caller does not evaluate to an accepted value.")
+                            }
                         }
-                    }
-                };
+                    };
 
-                Ok(*(symbols
-                    .borrow()
-                    .call_fn(method_name.to_owned(), fn_args.to_owned())))
+                    if i == fn_calls.len() - 1 {
+                        return Ok(*(symbols
+                            .borrow()
+                            .call_fn(method_name.to_owned(), fn_args.to_owned())));
+                    } else {
+                        let val = *(symbols
+                            .borrow()
+                            .call_fn(method_name.to_owned(), fn_args.to_owned()));
+
+                        caller = val
+                    }
+                }
+
+                Ok(Expr::Primitive(Primitive::None))
             }
             Expr::Assign { name, expr } => {
                 let value = expr.evaluate(symbols.clone())?;
@@ -563,15 +575,13 @@ fn parse_var(s: Span) -> NomResult<Span, String> {
 fn parse_chained_fn_call(s: Span) -> NomResult<Span, Expr> {
     let (s, caller) = alt((parse_var_expr, parse_primitive))(s)?;
     let (s, _) = tag(".")(s)?;
-    let (s, method_name) = parse_var(s)?;
-    let (s, fn_args) = delimited(char('('), separated_list0(char(','), parse_expr), char(')'))(s)?;
+    let (s, fn_calls) = separated_list0(char('.'), parse_fn_call)(s)?;
 
     Ok((
         s,
         Expr::ChainedFnCall {
             caller: Box::new(caller),
-            method_name,
-            fn_args,
+            fn_calls,
         },
     ))
 }
@@ -988,7 +998,7 @@ mod tests {
 
     #[test]
     fn test_parse_chained_fn_call_works() {
-        let span = Span::new("\"Meme\".contains(\"m\")");
+        let span = Span::new("\"Meme\".push_str(\"lord\").contains(\"m\")");
 
         let (_, expr) = parse_chained_fn_call(span).unwrap();
 
@@ -996,8 +1006,16 @@ mod tests {
             expr,
             Expr::ChainedFnCall {
                 caller: Box::new(Expr::Primitive(Primitive::String("Meme".into()))),
-                method_name: "contains".into(),
-                fn_args: vec![Expr::Primitive(Primitive::String("m".to_string()))]
+                fn_calls: vec![
+                    Expr::FnCall {
+                        name: "push_str".into(),
+                        params: vec![Expr::string("lord".into())]
+                    },
+                    Expr::FnCall {
+                        name: "contains".into(),
+                        params: vec![Expr::string("m".into())]
+                    }
+                ]
             }
         )
     }
