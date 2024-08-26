@@ -437,7 +437,7 @@ impl Expr {
                     .borrow_mut()
                     .register_fn(name.clone(), Box::new(expr.to_owned()));
 
-                Ok(expr)
+                Ok(Expr::Primitive(Primitive::None))
             }
         }
     }
@@ -477,7 +477,6 @@ fn parse_if(s: Span) -> NomResult<Span, Expr> {
 }
 
 fn parse_var(s: Span) -> NomResult<Span, String> {
-    let (s, _) = multispace0(s)?;
     let (s, var_name) = take_while1(|c: char| c.is_alphanumeric() || c == '_')(s)?;
     Ok((s, var_name.fragment().to_string()))
 }
@@ -713,7 +712,8 @@ fn parse_return(s: Span) -> NomResult<Span, Expr> {
 }
 
 fn parse_fn_decl(s: Span) -> NomResult<Span, Expr> {
-    let (s, _) = take_until("plan")(s)?;
+    //let (s, _) = take_until("plan")(s)?;
+    let (s, _) = multispace0(s)?;
     let (s, _) = tag("plan")(s)?;
     let (s, _) = multispace1(s)?;
     let (s, name) = parse_var(s)?;
@@ -768,8 +768,8 @@ fn parse_bracketed_expr(s: Span) -> NomResult<Span, Expr> {
     Ok((s, bracketed_expr))
 }
 
-fn parse_decl(s: Span) -> NomResult<Span, Expr> {
-    let (s, _) = take_until("yarr")(s)?;
+fn parse_var_decl(s: Span) -> NomResult<Span, Expr> {
+    let (s, _) = multispace0(s)?;
     let (s, _) = tag("yarr")(s)?;
     let (s, _) = multispace1(s)?;
     let (s, (name, expr)) = pair(
@@ -796,16 +796,16 @@ fn parse_eof(s: Span) -> NomResult<Span, Expr> {
     }
 }
 
+pub fn parse_decl(s: Span) -> NomResult<Span, Expr> {
+    alt((parse_struct_decl, parse_var_decl, parse_fn_decl))(s)
+}
+
 pub fn parse_statement(s: Span) -> NomResult<Span, Expr> {
-    if let Ok((s, expr)) = parse_struct_decl(s) {
-        return Ok((s, expr));
-    }
     alt((
         parse_chained_fn_call,
         parse_maths_int,
         parse_import,
         parse_decl,
-        parse_fn_decl,
         parse_fn_call,
         parse_expr,
         parse_eof,
@@ -815,6 +815,34 @@ pub fn parse_statement(s: Span) -> NomResult<Span, Expr> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_fn_works() {
+        let span = Span::new(
+            "
+            plan printme(myNumber: number) {
+                print(myNumber)
+            }
+            ",
+        );
+
+        let (s, expr) = parse_statement(span).unwrap();
+
+        assert_eq!(
+            expr,
+            Expr::FnDecl {
+                name: "printme".to_string(),
+                fn_params: vec![FnParameter {
+                    kind: Typename::Number,
+                    name: "myNumber".to_string()
+                }],
+                body: Box::new(Expr::FnBody(vec![Expr::FnCall {
+                    name: "print".to_string(),
+                    params: vec![Expr::Variable("myNumber".to_string())]
+                }]))
+            }
+        );
+    }
 
     #[test]
     fn test_parse_empty_struct_works() {

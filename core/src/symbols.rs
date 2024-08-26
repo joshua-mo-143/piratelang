@@ -46,9 +46,11 @@ impl SymbolTable {
         if check_reserved_keyword(&name) {
             panic!("Can't use reserved keyword: {name}");
         }
+
         if self.fns.contains_key(&name) {
             panic!("Can't register a function that already exists!");
         }
+
         self.fns.insert(name, fun);
     }
 

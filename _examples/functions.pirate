@@ -1,10 +1,7 @@
 plunder logging
 
-yarr me be 52
+plan printme() { print("Hello world!") }
+yarr me be 53
 
-plan printTheThing(myNumber: number) {
-    print(myNumber)
-}
-
-printTheThing(32)
+printme()
 print(me)

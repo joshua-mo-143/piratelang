@@ -27,6 +27,8 @@ impl Interpreter {
 
         while !input.is_empty() || input.fragment() != &"\n" {
             let (remaining_input, expr) = parse_statement(input).unwrap();
+            println!("Found expr: {expr:?}");
+            println!("Remaining input: {remaining_input:?}");
             let val = expr.evaluate(self.symbol_table.clone()).unwrap();
 
             if val == Expr::Eof {
@@ -42,6 +44,7 @@ impl Interpreter {
         while !input.is_empty() || input.fragment() != &"\n" {
             let (remaining_input, expr) = parse_statement(input).unwrap();
             println!("Statement found: {expr:?}");
+            println!("Input remaining: {remaining_input:?}");
             let table = Rc::clone(&self.symbol_table);
             let val = expr.evaluate(table).unwrap();
             print!("{val:?}");
