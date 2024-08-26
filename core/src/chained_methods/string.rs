@@ -4,7 +4,7 @@ use crate::symbols::{Module, SymbolTable};
 
 pub struct StringMethods;
 
-#[piratelang_macros::load_module(name = "string")]
+#[piratelang_macros::load_chained_methods(name = "string")]
 impl StringMethods {
     fn contains(extra_args: Vec<Expr>) -> Box<Expr> {
         check_args_num!(1, extra_args.len());
@@ -25,7 +25,7 @@ impl StringMethods {
         }
     }
 
-    fn pushs(extra_args: Vec<Expr>) -> Box<Expr> {
+    fn append(extra_args: Vec<Expr>) -> Box<Expr> {
         check_args_num!(2, extra_args.len());
         let mut extra_args = extra_args.into_iter();
         let Expr::Primitive(Primitive::String(str)) = extra_args.next().unwrap() else {

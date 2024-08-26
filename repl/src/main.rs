@@ -1,12 +1,14 @@
 use piratelang_core::{
     interpreter::Interpreter,
     parser::{parse_statement, Expr, Primitive, Span},
-    stdlib::logging::Logging,
     symbols::SymbolTable,
 };
-use std::cell::{RefCell, RefMut};
-use std::io::{self, Read};
+use std::io::{self, stdout, Read};
 use std::rc::Rc;
+use std::{
+    cell::{RefCell, RefMut},
+    io::Write,
+};
 
 fn main() {
     println!("Piratelang v0.0.0 REPL (Press Ctrl+c to exit)");
@@ -17,6 +19,7 @@ fn main() {
     loop {
         let mut buf = String::new();
         print!("> ");
+        stdout().flush().unwrap();
 
         io::stdin().read_line(&mut buf).unwrap();
 

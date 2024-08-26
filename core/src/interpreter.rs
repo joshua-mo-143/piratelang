@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::chained_methods::string::StringMethods;
 use crate::errors::CustomError;
 use crate::parser::{parse_statement, Expr, Span};
-use crate::stdlib::logging::Logging;
+use crate::stdlib::logging::Log;
 use crate::symbols::SymbolTable;
 
 pub struct Interpreter {
@@ -19,7 +19,7 @@ impl Interpreter {
 
     pub fn load_modules(&mut self) {
         self.symbol_table.borrow_mut().load_module(StringMethods);
-        self.symbol_table.borrow_mut().load_module(Logging);
+        self.symbol_table.borrow_mut().load_module(Log);
     }
 
     pub fn interpret(&mut self, s: &str) {
@@ -27,8 +27,6 @@ impl Interpreter {
 
         while !input.is_empty() || input.fragment() != &"\n" {
             let (remaining_input, expr) = parse_statement(input).unwrap();
-            println!("Found expr: {expr:?}");
-            println!("Remaining input: {remaining_input:?}");
             let val = expr.evaluate(self.symbol_table.clone()).unwrap();
 
             if val == Expr::Eof {

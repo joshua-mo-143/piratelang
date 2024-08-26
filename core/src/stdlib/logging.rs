@@ -4,10 +4,10 @@ use crate::{
     symbols::{self, Module, SymbolTable},
 };
 
-pub struct Logging;
+pub struct Log;
 
 #[piratelang_macros::load_module]
-impl Logging {
+impl Log {
     fn print(s: Vec<Expr>) -> Box<Expr> {
         check_args_num!(1, s.len());
 

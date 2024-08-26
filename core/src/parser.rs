@@ -21,7 +21,7 @@ pub type Span<'a> = LocatedSpan<&'a str>;
 pub type NomResult<I, O> = IResult<I, O, CustomError<I>>;
 
 use crate::errors::CustomError;
-use crate::stdlib::logging::Logging;
+use crate::stdlib::logging::Log;
 use crate::symbols::SymbolTable;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -233,7 +233,7 @@ pub enum Expr {
     MathOps(MathOps),
     Primitive(Primitive),
     Variable(String),
-    Module(String),
+    ModuleName(String),
     Typename(Typename),
     FnParameter(FnParameter),
     RustFn(Box<fn(Vec<Expr>) -> Box<Expr>>),
@@ -298,12 +298,32 @@ impl From<Primitive> for Expr {
 }
 
 impl Expr {
+    pub fn string(str: String) -> Self {
+        Self::Primitive(Primitive::String(str))
+    }
+
+    pub fn module_name(str: String) -> Self {
+        Self::ModuleName(str)
+    }
+
+    pub fn number(num: i64) -> Self {
+        Self::Primitive(Primitive::Number(num))
+    }
+
+    pub fn bool(bool: bool) -> Self {
+        Self::Primitive(Primitive::Bool(bool))
+    }
+
+    pub fn list(list: Vec<Expr>) -> Self {
+        Self::Primitive(Primitive::List(list))
+    }
+
     pub fn evaluate<'a>(
         self,
         symbols: Rc<RefCell<SymbolTable>>,
     ) -> Result<Expr, CustomError<Span<'a>>> {
         match self {
-            Expr::Module(name) => Ok(Expr::Module(name.to_owned())),
+            Expr::ModuleName(name) => Ok(Expr::module_name(name.to_owned())),
             Expr::Return(expr) => Ok(Expr::Return(expr.to_owned())),
             Expr::FnCall { name, params } => {
                 let fn_args: Vec<Expr> = params
@@ -344,7 +364,7 @@ impl Expr {
             Expr::Empty => Ok(Expr::Empty),
             Expr::Import(name) => match name.trim() {
                 "logging" => {
-                    symbols.borrow_mut().load_module(Logging);
+                    symbols.borrow_mut().load_module(Log);
                     Ok(Expr::Empty)
                 }
                 _ => return Err("Invalid module.".into()),
@@ -383,11 +403,13 @@ impl Expr {
                     format!("{}{method_name}", prim.to_module_name())
                 } else {
                     let val = caller.clone().evaluate(symbols.clone()).unwrap();
-                    let Expr::Primitive(prim) = val else {
-                        panic!("Caller does not evaluate to a concrete type");
-                    };
-
-                    format!("{}{method_name}", prim.to_module_name())
+                    match val {
+                        Expr::Primitive(prim) => format!("{}{method_name}", prim.to_module_name()),
+                        Expr::ModuleName(name) => format!("{name}-module-{method_name}"),
+                        _ => {
+                            panic!("Caller does not evaluate to an accepted value.")
+                        }
+                    }
                 };
 
                 Ok(*(symbols
@@ -712,7 +734,6 @@ fn parse_return(s: Span) -> NomResult<Span, Expr> {
 }
 
 fn parse_fn_decl(s: Span) -> NomResult<Span, Expr> {
-    //let (s, _) = take_until("plan")(s)?;
     let (s, _) = multispace0(s)?;
     let (s, _) = tag("plan")(s)?;
     let (s, _) = multispace1(s)?;

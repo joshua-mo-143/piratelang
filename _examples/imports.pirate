@@ -1,4 +1,4 @@
-plunder logging
+plunder log
 
 yarr theAnswer be 42
 print(theAnswer)
