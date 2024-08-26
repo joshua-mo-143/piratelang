@@ -12,11 +12,12 @@ To try out Piratelang, you can run the REPL in this repo (`cargo run -p repl` fr
 - [x] If statements
 - [x] Mathematical operators
 - [x] Functions
+- [x] Chained functions
 - [x] Add lists
 - [x] Add structs
+- [x] "Extends" syntax for adding chained methods to structs
 - [ ] File imports
 - [x] Ability to use Rust functions under the hood for stdlib
-- [x] Chained methods
 - [ ] Design a standard library
 - [ ] Write a standard library
 - [ ] Write a web server using Piratelang
