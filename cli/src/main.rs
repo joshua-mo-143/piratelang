@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 use piratelang_core::interpreter::Interpreter;
 use std::fs::read_to_string;
 use std::path::PathBuf;
@@ -29,7 +29,9 @@ fn main() {
             let file_contents = read_to_string(path).unwrap();
             let file_contents = file_contents.trim_end();
 
-            interpreter.interpret(file_contents);
+            if let Err(e) = interpreter.interpret(file_contents) {
+                println!("RUNTIME ERROR: {e:?}")
+            };
         }
     }
 }

@@ -11,6 +11,12 @@ pub struct Interpreter {
     symbol_table: Rc<RefCell<SymbolTable>>,
 }
 
+impl Default for Interpreter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Interpreter {
     pub fn new() -> Self {
         let symbol_table = Rc::new(RefCell::new(SymbolTable::new()));
@@ -22,18 +28,32 @@ impl Interpreter {
         self.symbol_table.borrow_mut().load_module(Log);
     }
 
-    pub fn interpret(&mut self, s: &str) {
+    pub fn interpret(&mut self, s: &str) -> Result<(), CustomError<Span>> {
         let mut input = Span::new(s);
 
         while !input.is_empty() || input.fragment() != &"\n" {
-            let (remaining_input, expr) = parse_statement(input).unwrap();
-            let val = expr.evaluate(self.symbol_table.clone()).unwrap();
+            let (remaining_input, expr) = match parse_statement(input) {
+                Ok((s, expr)) => {
+                    println!("Found expr: {expr:?}");
+                    (s, expr)
+                }
+                Err(e) => return Err(CustomError::CustomError(e.to_string())),
+            };
+            let val = match expr.evaluate(self.symbol_table.clone()) {
+                Ok(val) => {
+                    println!("Found val: {val:?}");
+                    val
+                }
+                Err(e) => return Err(e),
+            };
 
             if val == Expr::Eof {
                 break;
             }
             input = remaining_input;
         }
+
+        Ok(())
     }
 
     pub fn interpret_print(&self, s: &str) {
@@ -68,7 +88,7 @@ mod tests {
         let input = read_to_string("../_examples/assignment.pirate").unwrap();
         let input = input.trim_end();
 
-        parser.interpret(input);
+        parser.interpret(input).unwrap();
         assert_eq!(parser.symbol_table.borrow().len(), 2);
     }
 
@@ -78,7 +98,7 @@ mod tests {
         let input = read_to_string("../_examples/imports.pirate").unwrap();
         let input = input.trim_end();
 
-        parser.interpret(input);
+        parser.interpret(input).unwrap();
 
         assert_eq!(parser.symbol_table.borrow().len(), 1);
     }
@@ -89,7 +109,7 @@ mod tests {
         let input = read_to_string("../_examples/functions.pirate").unwrap();
         let input = input.trim_end();
 
-        parser.interpret(input);
+        parser.interpret(input).unwrap();
 
         assert_eq!(parser.symbol_table.borrow().len(), 1);
     }
@@ -101,8 +121,17 @@ mod tests {
         let input = read_to_string("../_examples/structs.pirate").unwrap();
         let input = input.trim_end();
 
-        parser.interpret(input);
+        parser.interpret(input).unwrap();
 
         assert_eq!(parser.symbol_table.borrow().len(), 1);
+    }
+
+    #[test]
+    fn test_using_io_works() {
+        let mut parser = Interpreter::new();
+        let input = read_to_string("../_examples/io.pirate").unwrap();
+        let input = input.trim_end();
+
+        assert!(parser.interpret(input).is_ok());
     }
 }

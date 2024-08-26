@@ -1,6 +1,4 @@
-use crate::parser::Span;
 use nom::error::{ErrorKind, ParseError};
-use nom_locate::LocatedSpan;
 
 #[derive(Debug, PartialEq)]
 pub enum CustomError<I> {

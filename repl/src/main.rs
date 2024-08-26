@@ -1,14 +1,7 @@
-use piratelang_core::{
-    interpreter::Interpreter,
-    parser::{parse_statement, Expr, Primitive, Span},
-    symbols::SymbolTable,
-};
-use std::io::{self, stdout, Read};
-use std::rc::Rc;
-use std::{
-    cell::{RefCell, RefMut},
-    io::Write,
-};
+use piratelang_core::interpreter::Interpreter;
+use std::io::{self, stdout};
+
+use std::io::Write;
 
 fn main() {
     println!("Piratelang v0.0.0 REPL (Press Ctrl+c to exit)");
@@ -23,6 +16,8 @@ fn main() {
 
         io::stdin().read_line(&mut buf).unwrap();
 
-        parser.interpret(buf.trim());
+        if let Err(e) = parser.interpret(buf.trim()) {
+            println!("Error while parsing: {e:?}")
+        };
     }
 }

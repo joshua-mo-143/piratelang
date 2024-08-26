@@ -1,0 +1,5 @@
+plunder io
+plunder log
+
+yarr me be read_file_str("Cargo.toml")
+print(me)

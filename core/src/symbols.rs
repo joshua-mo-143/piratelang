@@ -2,7 +2,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::parser::{parse_statement, Expr, FnParameter, Primitive, Struct, StructParam};
+use crate::{
+    errors::CustomError,
+    parser::{Expr, FnParameter, Primitive, Span, Struct, StructParam},
+};
 
 #[derive(Debug, Clone)]
 pub struct SymbolTable {
@@ -17,6 +20,12 @@ pub struct Function {
     fun: Box<Expr>,
 }
 
+impl Default for SymbolTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SymbolTable {
     pub fn new() -> Self {
         Self {
@@ -26,7 +35,7 @@ impl SymbolTable {
         }
     }
 
-    pub fn get_vars_table<'a>(&'a self) -> &'a HashMap<String, Box<Expr>> {
+    pub fn get_vars_table(&self) -> &HashMap<String, Box<Expr>> {
         &self.vars
     }
 
@@ -34,12 +43,12 @@ impl SymbolTable {
         self.vars.insert(name, var);
     }
 
-    pub fn get_var<'a>(&'a self, name: String) -> &'a Expr {
+    pub fn get_var(&self, name: String) -> Result<&Expr, CustomError<Span>> {
         let Some(expr) = self.vars.get(&name) else {
-            panic!("Variable not found: {name}")
+            return Err(format!("Variable not found: {name}").into());
         };
 
-        expr
+        Ok(expr)
     }
 
     pub fn register_fn(&mut self, name: String, fun: Box<Expr>) {
@@ -67,7 +76,7 @@ impl SymbolTable {
         self.structs.insert(name, Box::new(expr));
     }
 
-    pub fn get_struct_decl<'a>(&'a self, name: String) -> &'a Expr {
+    pub fn get_struct_decl(&self, name: String) -> &Expr {
         let Some(expr) = self.structs.get(&name) else {
             panic!("Variable not found: {name}")
         };
@@ -115,7 +124,7 @@ impl SymbolTable {
         match *function_as_expr.to_owned() {
             Expr::RustFn(fun) => fun(fn_args),
             Expr::FnDecl {
-                name,
+                fn_name,
                 body,
                 fn_params,
             } => {
@@ -147,7 +156,7 @@ impl SymbolTable {
                     let _ = expr.evaluate(local_symbol_table.clone());
                 }
 
-                return Box::new(Expr::Primitive(Primitive::None));
+                Box::new(Expr::Primitive(Primitive::None))
             }
             _ => todo!(),
         }
@@ -158,11 +167,15 @@ impl SymbolTable {
     }
 
     pub fn inherit_functions_from(&mut self, from: &HashMap<String, Box<Expr>>) {
-        self.fns = from.to_owned()
+        from.clone_into(&mut self.fns)
     }
 
     pub fn len(&self) -> usize {
         self.vars.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.vars.len() == 0
     }
 }
 
@@ -173,9 +186,5 @@ pub trait Module {
 fn check_reserved_keyword(keyword: &str) -> bool {
     let reserved_keywords = ["yarr"];
 
-    if reserved_keywords.contains(&keyword) {
-        true
-    } else {
-        false
-    }
+    reserved_keywords.contains(&keyword)
 }

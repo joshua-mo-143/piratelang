@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Formatter;
+use std::fs::File;
 use std::rc::Rc;
 use std::str::FromStr;
 
@@ -15,13 +16,15 @@ use nom::combinator::{eof, opt};
 use nom::multi::separated_list0;
 use nom::sequence::{delimited, pair, preceded, terminated};
 use nom::IResult;
-use nom_locate::{position, LocatedSpan};
+use nom_locate::LocatedSpan;
 
 pub type Span<'a> = LocatedSpan<&'a str>;
 pub type NomResult<I, O> = IResult<I, O, CustomError<I>>;
 
 use crate::errors::CustomError;
+use crate::stdlib::io::Io;
 use crate::stdlib::logging::Log;
+use crate::symbols::Module;
 use crate::symbols::SymbolTable;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -86,7 +89,7 @@ impl EqOps {
     }
     fn compare_eq(self, expr1: Expr, expr2: Expr) -> Expr {
         if expr1 == expr2 {
-            return Expr::Primitive(Primitive::Bool(true));
+            Expr::Primitive(Primitive::Bool(true))
         } else {
             Expr::Primitive(Primitive::Bool(false))
         }
@@ -170,6 +173,12 @@ pub struct StructParam {
     pub value: Expr,
 }
 
+impl Display for StructParam {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}: {}", self.name, self.value)
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Struct {
     pub name: String,
@@ -192,7 +201,16 @@ impl Display for Primitive {
                     .join(", ");
                 write!(f, "[{list_as_str}]")
             }
-            Self::Struct(inner) => todo!(),
+            Self::Struct(inner) => {
+                let args_as_str = inner
+                    .field_args
+                    .to_owned()
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "{} {{ {args_as_str} }}", inner.name)
+            }
         }
     }
 }
@@ -239,6 +257,10 @@ pub enum Expr {
     RustFn(Box<fn(Vec<Expr>) -> Box<Expr>>),
     FnBody(Vec<Expr>),
     Return(Box<Expr>),
+    Extends {
+        name: String,
+        functions: Vec<Expr>,
+    },
     StructDecl {
         name: String,
         fields: Vec<FnParameter>,
@@ -267,7 +289,7 @@ pub enum Expr {
         expr2: Box<Expr>,
     },
     FnDecl {
-        name: String,
+        fn_name: String,
         fn_params: Vec<FnParameter>,
         body: Box<Expr>,
     },
@@ -278,6 +300,15 @@ impl Display for Expr {
         match self {
             Self::Eof => write!(f, "eof"),
             Self::Primitive(p) => write!(f, "{p}"),
+            Self::StructInit { name, args } => {
+                let args_as_str = args
+                    .to_owned()
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "{} {{ {args_as_str} }}", name)
+            }
             _ => {
                 panic!("You can't print that!")
             }
@@ -323,15 +354,30 @@ impl Expr {
         symbols: Rc<RefCell<SymbolTable>>,
     ) -> Result<Expr, CustomError<Span<'a>>> {
         match self {
+            Expr::Extends { name, functions } => {
+                functions.iter().for_each(|x| {
+                    let Expr::FnDecl { fn_name, .. } = x else {
+                        panic!("Only functions are allowed in `extends` syntax!");
+                    };
+
+                    symbols
+                        .borrow_mut()
+                        .register_fn(format!("{name}-{fn_name}"), Box::new(x.to_owned()));
+                });
+
+                Ok(Expr::Extends { name, functions })
+            }
             Expr::ModuleName(name) => Ok(Expr::module_name(name.to_owned())),
             Expr::Return(expr) => Ok(Expr::Return(expr.to_owned())),
             Expr::FnCall { name, params } => {
                 let fn_args: Vec<Expr> = params
                     .into_iter()
                     .map(|x| match x {
-                        Expr::Variable(var_name) => {
-                            symbols.borrow().get_var(var_name.to_owned()).to_owned()
-                        }
+                        Expr::Variable(var_name) => symbols
+                            .borrow()
+                            .get_var(var_name.to_owned())
+                            .unwrap()
+                            .to_owned(),
                         Expr::IfCond {
                             expr1,
                             expr2,
@@ -362,17 +408,26 @@ impl Expr {
                 expr2,
             } => Ok(eq_op.compare(*expr1, *expr2)),
             Expr::Empty => Ok(Expr::Empty),
-            Expr::Import(name) => match name.trim() {
-                "logging" => {
-                    symbols.borrow_mut().load_module(Log);
-                    Ok(Expr::Empty)
+            Expr::Import(name) => {
+                match name.trim() {
+                    "log" => {
+                        symbols.borrow_mut().load_module(Log);
+                    }
+                    "io" => {
+                        symbols.borrow_mut().load_module(Io);
+                    }
+                    _ => return Err("Invalid module.".into()),
                 }
-                _ => return Err("Invalid module.".into()),
-            },
+                Ok(Expr::Empty)
+            }
             Expr::RustFn(fun) => Ok(Expr::RustFn(fun.to_owned())),
             Expr::Primitive(primitive) => Ok(primitive.to_owned().into()),
             Expr::Typename(kind) => Ok(kind.to_owned().into()),
-            Expr::Variable(name) => Ok(symbols.borrow_mut().get_var(name.to_string()).to_owned()),
+            Expr::Variable(name) => Ok(symbols
+                .borrow_mut()
+                .get_var(name.to_string())
+                .unwrap()
+                .to_owned()),
             Expr::FnBody(body) => Ok(Expr::FnBody(body.to_owned())),
             Expr::FnParameter(param) => Ok(Expr::FnParameter(param.to_owned())),
             Expr::ChainedFnCall {
@@ -385,9 +440,11 @@ impl Expr {
                 let fn_args: Vec<Expr> = fn_args
                     .into_iter()
                     .map(|x| match x {
-                        Expr::Variable(var_name) => {
-                            symbols.borrow().get_var(var_name.to_owned()).to_owned()
-                        }
+                        Expr::Variable(var_name) => symbols
+                            .borrow()
+                            .get_var(var_name.to_owned())
+                            .unwrap()
+                            .to_owned(),
                         Expr::IfCond {
                             expr1,
                             expr2,
@@ -446,18 +503,18 @@ impl Expr {
             }
             Expr::MathOps(op) => Ok(Expr::MathOps(op.to_owned())),
             Expr::FnDecl {
-                name,
+                fn_name,
                 fn_params,
                 body,
             } => {
                 let expr = Expr::FnDecl {
-                    name: name.to_owned(),
+                    fn_name: fn_name.to_owned(),
                     fn_params: fn_params.to_owned(),
                     body: body.to_owned(),
                 };
                 symbols
                     .borrow_mut()
-                    .register_fn(name.clone(), Box::new(expr.to_owned()));
+                    .register_fn(fn_name.clone(), Box::new(expr.to_owned()));
 
                 Ok(Expr::Primitive(Primitive::None))
             }
@@ -589,6 +646,29 @@ fn parse_struct_field(s: Span) -> NomResult<Span, FnParameter> {
             name: field_name,
         },
     ))
+}
+
+fn parse_extends_decl(s: Span) -> NomResult<Span, Expr> {
+    let (s, _) = multispace0(s)?;
+    let (s, _) = tag("extends")(s)?;
+    let (s, _) = multispace1(s)?;
+    let (s, name) = parse_struct_ident(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, _) = char('{')(s)?;
+    let (s, _) = multispace0(s)?;
+
+    let mut parser = delimited(
+        multispace0,
+        separated_list0(multispace0, parse_fn_decl),
+        multispace0,
+    );
+
+    let (s, functions) = parser(s)?;
+
+    let (s, _) = multispace0(s)?;
+    let (s, _) = char('}')(s)?;
+
+    Ok((s, Expr::Extends { name, functions }))
 }
 
 fn parse_var_expr(s: Span) -> NomResult<Span, Expr> {
@@ -737,7 +817,7 @@ fn parse_fn_decl(s: Span) -> NomResult<Span, Expr> {
     let (s, _) = multispace0(s)?;
     let (s, _) = tag("plan")(s)?;
     let (s, _) = multispace1(s)?;
-    let (s, name) = parse_var(s)?;
+    let (s, fn_name) = parse_var(s)?;
     let (s, fn_params) = delimited(
         char('('),
         separated_list0(char(','), parse_param),
@@ -750,7 +830,7 @@ fn parse_fn_decl(s: Span) -> NomResult<Span, Expr> {
     Ok((
         s,
         Expr::FnDecl {
-            name,
+            fn_name,
             fn_params,
             body: Box::new(body),
         },
@@ -775,18 +855,6 @@ fn parse_fn_call(s: Span) -> NomResult<Span, Expr> {
 
 fn parse_primitive(s: Span) -> NomResult<Span, Expr> {
     alt((parse_str, parse_int, parse_bool, parse_list))(s)
-}
-
-fn parse_bracketed_expr(s: Span) -> NomResult<Span, Expr> {
-    let mut parser = delimited(
-        tag("{"),
-        delimited(multispace1, parse_expr, multispace1),
-        tag("}"),
-    );
-
-    let (s, bracketed_expr) = parser(s)?;
-
-    Ok((s, bracketed_expr))
 }
 
 fn parse_var_decl(s: Span) -> NomResult<Span, Expr> {
@@ -818,7 +886,12 @@ fn parse_eof(s: Span) -> NomResult<Span, Expr> {
 }
 
 pub fn parse_decl(s: Span) -> NomResult<Span, Expr> {
-    alt((parse_struct_decl, parse_var_decl, parse_fn_decl))(s)
+    alt((
+        parse_struct_decl,
+        parse_var_decl,
+        parse_fn_decl,
+        parse_extends_decl,
+    ))(s)
 }
 
 pub fn parse_statement(s: Span) -> NomResult<Span, Expr> {
@@ -847,12 +920,12 @@ mod tests {
             ",
         );
 
-        let (s, expr) = parse_statement(span).unwrap();
+        let (_, expr) = parse_statement(span).unwrap();
 
         assert_eq!(
             expr,
             Expr::FnDecl {
-                name: "printme".to_string(),
+                fn_name: "printme".to_string(),
                 fn_params: vec![FnParameter {
                     kind: Typename::Number,
                     name: "myNumber".to_string()
@@ -869,7 +942,7 @@ mod tests {
     fn test_parse_empty_struct_works() {
         let span = Span::new("struct Meme {}");
 
-        let (s, expr) = parse_statement(span).unwrap();
+        let (_, expr) = parse_statement(span).unwrap();
 
         assert_eq!(
             expr,
@@ -884,7 +957,7 @@ mod tests {
     fn test_parse_one_field_struct_works() {
         let span = Span::new("struct Meme { name->string, id->number } ");
 
-        let (s, expr) = parse_statement(span).unwrap();
+        let (_, expr) = parse_statement(span).unwrap();
 
         assert_eq!(
             expr,
@@ -908,7 +981,7 @@ mod tests {
     fn test_parse_struct_ident_works() {
         let span = Span::new("Meme");
 
-        let (s, expr) = parse_struct_ident(span).unwrap();
+        let (_, expr) = parse_struct_ident(span).unwrap();
 
         assert_eq!(expr, "Meme".to_string())
     }
@@ -917,7 +990,7 @@ mod tests {
     fn test_parse_chained_fn_call_works() {
         let span = Span::new("\"Meme\".contains(\"m\")");
 
-        let (s, expr) = parse_chained_fn_call(span).unwrap();
+        let (_, expr) = parse_chained_fn_call(span).unwrap();
 
         assert_eq!(
             expr,
@@ -927,5 +1000,22 @@ mod tests {
                 fn_args: vec![Expr::Primitive(Primitive::String("m".to_string()))]
             }
         )
+    }
+
+    #[test]
+    fn parse_extends_works() {
+        let s = Span::new(
+            "
+            struct Meme {}
+
+            extends Meme {
+                plan meme() {}
+            }
+            ",
+        );
+
+        let (s, _) = parse_struct_decl(s).unwrap();
+
+        assert!(parse_extends_decl(s).is_ok())
     }
 }

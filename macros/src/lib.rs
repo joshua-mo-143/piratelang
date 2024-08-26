@@ -6,9 +6,9 @@ use syn::{
 };
 
 struct ModuleLoadArgs {
-    ident: Ident,
-    equals: Token![=],
-    name: Literal,
+    pub ident: Ident,
+    pub equals: Token![=],
+    pub name: Literal,
 }
 
 impl Parse for ModuleLoadArgs {
@@ -24,7 +24,7 @@ impl Parse for ModuleLoadArgs {
 #[proc_macro_attribute]
 pub fn load_chained_methods(args: TokenStream, input: TokenStream) -> TokenStream {
     let name = match syn::parse::<ModuleLoadArgs>(args) {
-        Ok(args) => format!("{}-", args.name.to_string().replace("\"", "")),
+        Ok(args) => format!("{}-", args.name.to_string().replace('"', "")),
         Err(_) => String::new(),
     };
 
@@ -73,11 +73,6 @@ pub fn load_chained_methods(args: TokenStream, input: TokenStream) -> TokenStrea
 
 #[proc_macro_attribute]
 pub fn load_module(args: TokenStream, input: TokenStream) -> TokenStream {
-    let modname = match syn::parse::<ModuleLoadArgs>(args) {
-        Ok(args) => format!("{}-module-", args.name.to_string().replace("\"", "")),
-        Err(_) => String::new(),
-    };
-
     let struct_impl = parse_macro_input!(input as ItemImpl);
 
     let Type::Path(path) = &*struct_impl.self_ty else {
