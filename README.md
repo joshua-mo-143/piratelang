@@ -6,6 +6,9 @@ This is *primarily* a hobby project, but with the eventual aim of being usable f
 ## Usage
 To try out Piratelang, you can run the REPL in this repo (`cargo run -p repl` from the root folder). You can also look at the examples folder (within `_examples`) if you want to have a cursory look at what code currently looks like, as they are used for tests.
 
+You can also try the CLI with `cargo run -p piratelang-cli run <file-name>`. Currently there's only one command to run a file, but if you don't want to use the REPL and want to run a file instead, the CLI is there!
+
+
 ## Roadmap
 - [x] Add basic type primitives
 - [x] Declare variables
@@ -22,6 +25,3 @@ To try out Piratelang, you can run the REPL in this repo (`cargo run -p repl` fr
 - [ ] Write a standard library
 - [ ] Write a web server using Piratelang
 - [ ] (Github-based) Package management
-
-## Language Quirks
-- It's currently recommended to put all of your functions at the top and then execution should either be in a different file or at the bottom of the file.
